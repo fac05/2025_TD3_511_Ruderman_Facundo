@@ -52,7 +52,8 @@ target_link_libraries(firmware
         pico_stdlib
         freertos
         pico_cyw43_arch_none
-        hardware_adc)
+        hardware_adc
+        )
 
 # Add the standard include files to the build
 target_include_directories(firmware PRIVATE
@@ -61,7 +62,6 @@ target_include_directories(firmware PRIVATE
 
 # Add any user requested libraries
 target_link_libraries(firmware 
-            
         )
 
 pico_add_extra_outputs(firmware)
