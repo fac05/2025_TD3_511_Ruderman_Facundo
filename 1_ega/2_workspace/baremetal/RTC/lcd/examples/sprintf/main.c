@@ -6,9 +6,9 @@
 // Eleccion de I2C a usar
 #define I2C         i2c0
 // Eleccion de GPIO para SDA
-#define SDA_GPIO    0
+#define SDA_GPIO    16
 // Eleccion de GPIO para SCL
-#define SCL_GPIO    1
+#define SCL_GPIO    17
 // Direccion de 7 bits del adaptador del LCD
 #define ADDR        0x27
 
@@ -26,14 +26,24 @@ int main(void) {
     gpio_pull_up(SCL_GPIO);
     // Inicializo LCD
     lcd_init(I2C, ADDR);
-    // Limpio el LCD
+    // Limpio pantalla
     lcd_clear();
-    // Escribo al comienzo
-    lcd_string("Hello");
-    // Muevo el cursor a la segunda fila, tercer columna
-    lcd_set_cursor(1, 2);
-    // Escribo
-    lcd_string("from RPi Pico!");
+    // Imprimo mensaje fijo
+    lcd_string("Tiempo pasado");
 
-    while (true);
+    // Contador
+    uint16_t i = 0;
+    // Variable para imprimir el mensaje
+    char str[16];
+
+    while (true) {
+        // Armo un string con la variable de contador y la incremento
+        sprintf(str, "T = %d seg", i++);
+        // Muevo el cursor al comienzo de la segunda fila
+        lcd_set_cursor(1, 0);
+        // Imprimo el mensaje
+        lcd_string(str);
+        // Demora
+        sleep_ms(1000);
+    }
 }

@@ -6,9 +6,9 @@
 // Eleccion de I2C a usar
 #define I2C         i2c0
 // Eleccion de GPIO para SDA
-#define SDA_GPIO    0
+#define SDA_GPIO    16
 // Eleccion de GPIO para SCL
-#define SCL_GPIO    1
+#define SCL_GPIO    17
 // Direccion de 7 bits del adaptador del LCD
 #define ADDR        0x27
 
