@@ -1,79 +1,106 @@
 // kernel_module.c
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/kthread.h>   // kthread_run, kthread_stop
-#include <linux/delay.h>     // msleep
-#include <linux/sched.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
+#include "gpio_driver.h"
 
-#define AUTHOR  "utn-fra-td3"
+#define AUTHOR "utn-fra-td3"
 
-// punteros a los hilos
-static struct task_struct *thread_hola;
-static struct task_struct *thread_chau;
+// ---------------- Parametro de modulo ----------------
+static unsigned int gpio = 18;              // por defecto, GPIO18 (BCM)
+module_param(gpio, uint, 0644);
+MODULE_PARM_DESC(gpio, "Numero de GPIO BCM a usar como salida LED");
 
-// ---------- Cuerpos de los hilos ----------
+// ---------------- Estado global ----------------
+static struct task_struct *t_on;
+static struct task_struct *t_off;
+static void __iomem *gpio_base;
 
-static int hilo_hola_fn(void *data)
+// ---------------- Hilos ----------------
+static int hilo_on_fn(void *data)
 {
-    while (!kthread_should_stop()) {
-        printk(KERN_INFO "Hola desde el kernel!\n");
-        if (msleep_interruptible(500))
-            break; // si nos despiertan por stop, salimos
-    }
-    return 0;
-}
+    /* desfase inicial de 250 ms para intercalar con el hilo OFF */
+    if (msleep_interruptible(250))
+        return 0;
 
-static int hilo_chau_fn(void *data)
-{
     while (!kthread_should_stop()) {
-        printk(KERN_INFO "Chau desde el kernel!\n");
+        gpio_set(gpio);            // LED ON
         if (msleep_interruptible(500))
             break;
     }
     return 0;
 }
 
-// ---------- Ciclo de vida del módulo ----------
+static int hilo_off_fn(void *data)
+{
+    while (!kthread_should_stop()) {
+        gpio_clr(gpio);            // LED OFF
+        if (msleep_interruptible(500))
+            break;
+    }
+    return 0;
+}
 
+// ---------------- Ciclo de vida del modulo ----------------
 static int __init kernel_module_init(void)
 {
-    int err = 0;
+    int err;
 
-    // crear hilos
-    thread_hola = kthread_run(hilo_hola_fn, NULL, "td3_hilo_hola");
-    if (IS_ERR(thread_hola)) {
-        err = PTR_ERR(thread_hola);
-        pr_err("No pude crear td3_hilo_hola: %d\n", err);
-        thread_hola = NULL;
+    pr_info("%s: cargando; GPIO=%u\n", AUTHOR, gpio);
+
+    // 1) Mapear el bloque de GPIO
+    gpio_base = gpio_map();                    // devuelve base o NULL
+    if (!gpio_base) {
+        pr_err("No pude mapear GPIO\n");
+        return -ENOMEM;
+    }
+
+    // 2) Configurar como salida y apagar inicialmente
+    gpio_set_dir_output(gpio);                 // configura GPFSELn como output
+    gpio_clr(gpio);                            // LED en OFF de arranque
+
+    // 3) Crear hilos
+    t_off = kthread_run(hilo_off_fn, NULL, "td3_led_off");
+    if (IS_ERR(t_off)) {
+        err = PTR_ERR(t_off);
+        pr_err("No pude crear td3_led_off: %d\n", err);
+        t_off = NULL;
+        gpio_unmap();
         return err;
     }
 
-    thread_chau = kthread_run(hilo_chau_fn, NULL, "td3_hilo_chau");
-    if (IS_ERR(thread_chau)) {
-        err = PTR_ERR(thread_chau);
-        pr_err("No pude crear td3_hilo_chau: %d\n", err);
-        thread_chau = NULL;
-        // si el segundo falla, detenemos el primero
-        kthread_stop(thread_hola);
-        thread_hola = NULL;
+    t_on = kthread_run(hilo_on_fn, NULL, "td3_led_on");
+    if (IS_ERR(t_on)) {
+        err = PTR_ERR(t_on);
+        pr_err("No pude crear td3_led_on: %d\n", err);
+        t_on = NULL;
+        kthread_stop(t_off);
+        t_off = NULL;
+        gpio_unmap();
         return err;
     }
 
-    pr_info("%s: modulo cargado, hilos iniciados\n", AUTHOR);
+    pr_info("%s: modulo cargado; hilos iniciados\n", AUTHOR);
     return 0;
 }
 
 static void __exit kernel_module_exit(void)
 {
-    if (thread_hola) {
-        kthread_stop(thread_hola);
-        thread_hola = NULL;
+    if (t_on) {
+        kthread_stop(t_on);
+        t_on = NULL;
     }
-    if (thread_chau) {
-        kthread_stop(thread_chau);
-        thread_chau = NULL;
+    if (t_off) {
+        kthread_stop(t_off);
+        t_off = NULL;
     }
-    pr_info("%s: modulo descargado, hilos detenidos\n", AUTHOR);
+
+    // Apago LED al salir y libero mapeo
+    gpio_clr(gpio);
+    gpio_unmap();
+
+    pr_info("%s: modulo descargado; hilos detenidos\n", AUTHOR);
 }
 
 module_init(kernel_module_init);
@@ -81,5 +108,4 @@ module_exit(kernel_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR(AUTHOR);
-MODULE_DESCRIPTION("TP: dos hilos periodicos que loguean cada 500 ms");
-
+MODULE_DESCRIPTION("TP5 V2: LED ON/OFF con dos hilos cada 500 ms y GPIO parametrizable");
